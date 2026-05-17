@@ -28,7 +28,7 @@ app.get('/login', async function (req, res) {
     res.redirect('https://accounts.spotify.com/authorize?' + stringify({
         response_type: 'code',
         client_id: config.client_id,
-        scope: 'user-read-private user-read-email playlist-read-private playlist-modify-public playlist-modify-private user-library-read user-library-modify',
+        scope: 'user-read-private user-read-email playlist-read-private playlist-read-collaborative playlist-modify-public playlist-modify-private user-library-read user-library-modify user-follow-read user-follow-modify',
         redirect_uri: config.callback_uri,
         state: generateRandomString(16),
         code_challenge_method: "S256",

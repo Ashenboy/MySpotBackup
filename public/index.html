@@ -153,6 +153,8 @@
     var playlistTotal = 0;
     var playlistQueue = [];
     var savedQueue = [];
+    var followQueue = [];
+    var artistFollowQueue = [];
     var makingChanges = false;
 
     function refreshTrackData(callback) {
@@ -163,9 +165,11 @@
             $('#loadingTitle').html('Loading your playlists and tracks…');
             refreshPlaylist(function () {
                 refreshMyMusicTracks(function () {
-                    $('#loadingTitle').html('All loaded! Choose to export or import below.');
-                    isExporting = false;
-                    callback();
+                    refreshFollowedArtists(function () {
+                        $('#loadingTitle').html('All loaded! Choose to export or import below.');
+                        isExporting = false;
+                        callback();
+                    });
                 });
             });
         }
@@ -276,6 +280,7 @@
         var keys = _.keys(coll.playlists);
         var count = keys.length + 1;
         if (!("importedStarred" in keys)) count++;
+        if (coll.followedPlaylists) count += coll.followedPlaylists.length;
         return count;
     }
 
@@ -297,6 +302,22 @@
                     globalStep = "Comparing saved tracks";
                     compareIdTracks(importColl.saved, collections.saved, addToSaved);
                     playlistStep += 1;
+                    // Queue followed playlists for following on new account
+                    if (importColl.followedPlaylists && importColl.followedPlaylists.length > 0) {
+                        globalStep = "Queueing followed playlists";
+                        $.each(importColl.followedPlaylists, function (index, fp) {
+                            followQueue.push(fp.id);
+                        });
+                        console.log('Followed playlists to restore:', followQueue.length);
+                    }
+                    // Queue followed artists for following on new account
+                    if (importColl.followedArtists && importColl.followedArtists.length > 0) {
+                        globalStep = "Queueing followed artists";
+                        $.each(importColl.followedArtists, function (index, artist) {
+                            artistFollowQueue.push(artist.id);
+                        });
+                        console.log('Followed artists to restore:', artistFollowQueue.length);
+                    }
                     var playlistNames = _.keys(importColl.playlists);
                     globalStep = "Comparing custom playlists";
                     handlePlaylistCompare(playlistNames.reverse(), function () {
@@ -311,19 +332,73 @@
         trackDiff = savedQueue.length + playlistQueue.length;
         trackTotal = Math.max(collTrackCount(importColl), trackDiff);
         trackStep = trackTotal - trackDiff;
-        if (trackTotal > 0) {
+        if (trackTotal > 0 || followQueue.length > 0) {
             $('#progressBar').show();
             globalStep = "Uploading tracks";
             handleSavedRequests(savedQueue.reverse(), function () {
                 handlePlaylistRequests(playlistQueue.reverse(), function () {
-                    globalStep = "Finished uploading";
-                    trackTotal = trackStep;
-                    isImporting = false;
+                    var afterPlaylists = function () {
+                        if (artistFollowQueue.length > 0) {
+                            globalStep = "Following artists";
+                            handleArtistFollowRequests(artistFollowQueue, function () {
+                                globalStep = "Finished uploading";
+                                trackTotal = trackStep;
+                                isImporting = false;
+                            });
+                        } else {
+                            globalStep = "Finished uploading";
+                            trackTotal = trackStep;
+                            isImporting = false;
+                        }
+                    };
+                    if (followQueue.length > 0) {
+                        globalStep = "Following playlists";
+                        handleFollowRequests(followQueue.reverse(), afterPlaylists);
+                    } else {
+                        afterPlaylists();
+                    }
                 });
             });
         } else {
             globalStep = "No new tracks found in import";
         }
+    }
+
+    function handleFollowRequests(arr, callback) {
+        var playlistId = arr.pop();
+        if (playlistId) {
+            playlistStep += 1;
+            console.log('Following playlist:', playlistId);
+            $.ajax({
+                method: "PUT",
+                url: 'https://api.spotify.com/v1/playlists/' + playlistId + '/followers',
+                contentType: 'application/json',
+                data: JSON.stringify({public: false}),
+                headers: {'Authorization': 'Bearer ' + token},
+                success: function () { console.log('Followed playlist:', playlistId); },
+                error: function (jqXHR) { console.warn('Failed to follow playlist ' + playlistId + ':', jqXHR.status); }
+            }).always(function () {
+                setTimeout(function () { handleFollowRequests(arr, callback); }, conf.slowdown_import);
+            });
+        } else { callback(); }
+    }
+
+    function handleArtistFollowRequests(arr, callback) {
+        // Spotify allows up to 50 artist IDs per request
+        if (arr.length === 0) { callback(); return; }
+        var batch = arr.splice(0, 50);
+        var ids = batch.join(',');
+        console.log('Following ' + batch.length + ' artists...');
+        $.ajax({
+            method: "PUT",
+            url: 'https://api.spotify.com/v1/me/following?type=artist&ids=' + ids,
+            headers: {'Authorization': 'Bearer ' + token},
+            success: function () { console.log('Followed ' + batch.length + ' artists'); },
+            error: function (jqXHR) { console.warn('Failed to follow artists:', jqXHR.status, jqXHR.responseText); }
+        }).always(function () {
+            playlistStep += batch.length;
+            setTimeout(function () { handleArtistFollowRequests(arr, callback); }, conf.slowdown_import);
+        });
     }
 
     function handlePlaylistCompare(names, callback) {
@@ -341,7 +416,7 @@
     }
 
     function addToPlaylist(playlistId, trackUri) {
-        playlistQueue.push('https://api.spotify.com/v1/users/' + userId + '/playlists/' + playlistId + '/tracks?uris=' + encodeURIComponent(trackUri));
+        playlistQueue.push('https://api.spotify.com/v1/playlists/' + playlistId + '/items?uris=' + encodeURIComponent(trackUri));
     }
 
     function makeSurePlaylistExists(name, callback) {
@@ -350,13 +425,14 @@
         var set = {name: name, public: "true"};
         $.ajax({
             method: "POST",
-            url: 'https://api.spotify.com/v1/users/' + userId + '/playlists',
+            url: 'https://api.spotify.com/v1/me/playlists',
             data: JSON.stringify(set),
             contentType: 'application/json',
             headers: {'Authorization': 'Bearer ' + token},
             success: function (response) {
+                var itemsData = response.items || response.tracks;
                 collections.playlists[response.name] = {
-                    name: response.name, href: response.tracks.href,
+                    name: response.name, href: itemsData ? itemsData.href : ('https://api.spotify.com/v1/playlists/' + response.id + '/items'),
                     id: response.id, tracks: []
                 };
                 callback(true);
@@ -473,6 +549,44 @@
         loadTrackChunks('https://api.spotify.com/v1/me/tracks', collections.saved, callback);
     }
 
+    function refreshFollowedArtists(callback) {
+        collections.followedArtists = [];
+        loadArtistChunks('https://api.spotify.com/v1/me/following?type=artist&limit=50', collections.followedArtists, callback);
+    }
+
+    function loadArtistChunks(url, arr, callback) {
+        $.ajax({
+            url: url,
+            headers: {'Authorization': 'Bearer ' + token},
+            success: function (data) {
+                if (!data || !data.artists) { callback(); return; }
+                var artists = data.artists;
+                $.each(artists.items, function (index, artist) {
+                    arr.push({
+                        id: artist.id,
+                        name: artist.name,
+                        uri: artist.uri || ('spotify:artist:' + artist.id)
+                    });
+                    console.log('Found followed artist:', artist.name);
+                });
+                console.log('Total followed artists so far:', arr.length);
+                // Cursor-based pagination
+                if (artists.next) {
+                    loadArtistChunks(artists.next, arr, callback);
+                } else if (artists.cursors && artists.cursors.after) {
+                    var nextUrl = 'https://api.spotify.com/v1/me/following?type=artist&limit=50&after=' + artists.cursors.after;
+                    loadArtistChunks(nextUrl, arr, callback);
+                } else {
+                    callback();
+                }
+            },
+            error: function (jqXHR) {
+                console.warn('Failed to fetch followed artists:', jqXHR.status);
+                callback();
+            }
+        });
+    }
+
     function loadTrackChunksWithTimeout(url, arr, callback) {
         setTimeout(function () { loadTrackChunks(url, arr, callback); }, conf.slowdown_export);
     }
@@ -485,21 +599,29 @@
                 if (!data) return;
                 if ('items' in data) {
                     $.each(data.items, function (index, value) {
-                        if (value.track !== null) {
-                            arr.push({id: value.track.id, uri: value.track.uri});
+                        // Feb 2026: track field may be renamed to 'item'
+                        var trackData = value.track || value.item;
+                        if (trackData !== null && trackData !== undefined) {
+                            arr.push({id: trackData.id, uri: trackData.uri});
                         } else { console.log("track is null", value); }
                     });
                 } else {
-                    arr.push({id: data.track.id, uri: data.track.uri});
+                    var trackData = data.track || data.item;
+                    if (trackData) arr.push({id: trackData.id, uri: trackData.uri});
                 }
                 if (data.next) { loadTrackChunksWithTimeout(data.next, arr, callback); }
                 else { callback(); }
+            },
+            error: function (jqXHR, textStatus, errorThrown) {
+                console.warn('Track fetch failed (' + jqXHR.status + ') for: ' + url + ' - skipping');
+                callback();
             }
         });
     }
 
     function refreshPlaylist(callback) {
         collections.playlists = {};
+        collections.followedPlaylists = [];
         var playlists = [];
         loadPlaylistChunks('https://api.spotify.com/v1/me/playlists', playlists, function () {
             handlePlaylistTracks(playlists, collections.playlists, callback);
@@ -512,19 +634,43 @@
             headers: {'Authorization': 'Bearer ' + token},
             success: function (data) {
                 if (!data) return;
+                console.log('Playlist API response:', data);
                 if ('items' in data) {
                     $.each(data.items, function (index, value) {
-                        if (value.tracks && value.tracks.href) {
-                            arr.push({name: value.name, href: value.tracks.href, id: value.id, tracks: []});
+                        // Feb 2026: Dev Mode only allows fetching items for owned/collaborative playlists
+                        var isOwned = value.owner && value.owner.id === userId;
+                        var isCollab = value.collaborative === true;
+                        if (!isOwned && !isCollab) {
+                            // Save non-owned playlist for follow-on-import
+                            console.log('Non-owned playlist (will be followed on import):', value.name);
+                            collections.followedPlaylists.push({
+                                id: value.id,
+                                name: value.name,
+                                owner: value.owner ? value.owner.id : 'unknown',
+                                uri: value.uri || ('spotify:playlist:' + value.id)
+                            });
+                            return; // skip track fetching
                         }
+                        // Feb 2026: 'tracks' renamed to 'items' in playlist objects
+                        var tracksRef = value.items || value.tracks;
+                        var href = tracksRef ? tracksRef.href : ('https://api.spotify.com/v1/playlists/' + value.id + '/items');
+                        console.log('Found owned playlist:', value.name, 'href:', href);
+                        arr.push({name: value.name, href: href, id: value.id, tracks: []});
                     });
                 } else {
-                    if (data.tracks && data.tracks.href) {
-                        arr.push({name: data.name, href: data.tracks.href, id: data.id, tracks: []});
+                    var tracksRef = data.items || data.tracks;
+                    if (tracksRef && tracksRef.href) {
+                        arr.push({name: data.name, href: tracksRef.href, id: data.id, tracks: []});
                     }
                 }
+                console.log('Total playlists so far:', arr.length);
                 if (data.next) { loadPlaylistChunks(data.next, arr, callback); }
                 else { callback(); }
+            },
+            error: function (jqXHR, textStatus, errorThrown) {
+                console.error('Playlist fetch failed:', jqXHR.status, textStatus, errorThrown);
+                console.error('Response:', jqXHR.responseText);
+                callback();
             }
         });
     }
