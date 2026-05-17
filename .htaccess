@@ -1,0 +1,3 @@
+PassengerNodejs /home/$USER/nodevenv/MySpotBackup/18/bin/node
+PassengerAppType node
+PassengerStartupFile index.js

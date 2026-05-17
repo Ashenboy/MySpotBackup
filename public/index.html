@@ -1,229 +1,171 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <meta http-equiv="content-type" content="text/html" charset="UTF-8">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Export and import your Spotify playlists and tracks with a single click.">
     <title>MySpotBackup</title>
-
-    <script type="text/javascript" src="config.js"></script>
-    <script type="text/javascript" src="https://code.jquery.com/jquery-1.11.2.min.js"></script>
-    <script type="text/javascript"
-            src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.8.2/underscore-min.js"></script>
-    <link href='http://fonts.googleapis.com/css?family=Lato:100,300,400,700,900,100italic,300italic,400italic,700italic,900italic&subset=latin,latin-ext'
-          rel='stylesheet' type='text/css'>
-
-    <style type='text/css'>
-        body {
-            padding: 0;
-            margin: 0;
-            font-family: 'Lato', sans-serif;
-            background: url(gplaypattern.png) repeat;
-            background-size: 188px 178px;
-        }
-
-        .container {
-            width: 640px;
-            margin-left: auto;
-            margin-right: auto;
-        }
-
-        .footer {
-            position: fixed;
-            bottom: 0;
-            width: 100%;
-        }
-
-        .heading {
-            color: #444;
-            font-size: 24px;
-            background-color: rgba(255, 255, 255, 0.9);
-            border-bottom: solid 1px #eaeaea;
-            width: 100%;
-            z-index: 500;
-            padding: 12px;
-        }
-
-        .button-main {
-            font-size: 18px;
-            font-weight: 600;
-            line-height: 1.5;
-            color: #fff;
-            background-color: #2ebd59;
-            display: inline-block;
-            margin-bottom: 0;
-            text-align: center;
-            vertical-align: middle;
-            cursor: pointer;
-            background-image: none;
-            border: 1px solid transparent;
-            white-space: nowrap;
-            border-radius: 500px;
-            padding: 12px 47px 8px;
-            border-width: 0;
-            letter-spacing: 1.2px;
-            min-width: 130px;
-            text-transform: uppercase;
-            white-space: normal;
-            margin: 0 0 1em;
-        }
-
-        .button-big {
-            margin-left: 150px;
-        }
-
-        .button-medium {
-            margin-left: 80px;
-        }
-
-        .title-bold {
-            font-weight: bold;
-            font-size: 44px;
-        }
-
-        .title-light {
-            font-weight: 300;
-            color: #555;
-            font-size: 44px;
-        }
-
-        .title-medium {
-            font-weight: bold;
-            font-size: 18px;
-        }
-
-        .progress-bar {
-            width: 0%;
-            background-color: #86e01e;
-            position: relative;
-            height: 16px;
-            border-radius: 4px;
-            -webkit-transition: 0.4s linear;
-            -moz-transition: 0.4s linear;
-            -o-transition: 0.4s linear;
-            transition: 0.4s linear;
-            -webkit-transition-property: width, background-color;
-            -moz-transition-property: width, background-color;
-            -o-transition-property: width, background-color;
-            transition-property: width, background-color;
-            -webkit-box-shadow: 0 0 1px 1px rgba(0, 0, 0, 0.25), inset 0 1px rgba(255, 255, 255, 0.1);
-            box-shadow: 0 0 1px 1px rgba(0, 0, 0, 0.25), inset 0 1px rgba(255, 255, 255, 0.1);
-        }
-
-        .progress {
-            width: 100%;
-            padding: 4px;
-            margin-top: 10px;
-        }
-
-        .link {
-            font-size: 14px;
-            padding: 5px 15px;
-            color: #121F59;
-            text-decoration: none;
-        }
-
-        .link:hover {
-            color: #A2C852;
-        }
-    </style>
+    <link rel="stylesheet" href="style.css">
+    <script src="config.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.13.6/underscore-min.js"></script>
 </head>
 <body>
 
-<div class="container">
-    <div class="heading">
-        <span class="title-bold">My</span><span class="title-light">Spot</span><span class="title-bold">Backup</span>
-        <br/>
-        <br/>
-        <div id="pnlLoggedOut">
-            <span><b>Export</b> your playlists and tracks setup into a file by a single click. <b>Import</b> the file to restore your setup at any time.</span>
-            <br/>
-            <br/>
-            <button id="login" class="button-main button-big">Login with Spotify</button>
-        </div>
-    </div>
-    <div id="pnlLoadingAccount" style="font-size: 16px; display: none;" class="heading">
-        <div class="title-medium">Account: <span id="userName"></span></div>
-        <br/>
-        <div id="loadingPlaylists"></div>
-        <div id="loadingTracks"></div>
-        <br/>
-        <div id="loadingTitle"></div>
-    </div>
-    <div id="pnlAction" style="overflow: hidden; display: none;">
-        <br/>
-        <div style="width: 50%; float: left;">
-            <button id="btnExport" class="button-main button-medium">Export</button>
-        </div>
-        <div style="width: 50%; float: left;">
-            <button id="btnImport" class="button-main button-medium">Import</button>
-        </div>
-    </div>
-    <div id="pnlImport" style="font-size: 16px; overflow: hidden; display: none;" class="heading">
-        <div id="pnlFile" style="">
-            <div style="float: left;">Select a previously exported file</div>
-            <input style="float: left; margin-left: 10px;" type="file" id="fileImport"/>
-        </div>
-        <div id="pnlFileInfo" style="display: none;">
-            <div class="title-medium">File: <span id="fileName"></span></div>
-            <br/>
-            <div id="filePlaylists"></div>
-            <div id="fileTracks"></div>
-        </div>
-    </div>
-    <div id="pnlUpload" style="font-size: 16px; overflow: hidden; display: none;" class="heading">
-        <div class="title-medium">Importing new playlists and tracks</div>
-        <br/>
-        <div><span>Processed playlists: </span><span id="playlistStep"></span>/<span id="playlistTotal"></span></div>
-        <div><span>Processed tracks: </span><span id="trackStep"></span>/<span id="trackTotal"></span></div>
-        <br/>
-        <div id="globalStep"></div>
-        <div class="progress">
-            <div id="progressBar" class="progress-bar" style="display: none;"></div>
-        </div>
-    </div>
-</div>
-<div class="footer">
-    <div class="container"
-         style="background-color: rgba(255,255,255,0.9); border-bottom: solid 1px #eaeaea; overflow: hidden;">
-        <a href="https://github.com/secuvera/SpotMyBackup/wiki" style="float: left;" class="link">Wiki</a>
-        <a href="https://www.secuvera.de/unternehmen/impressum/" style="float: right;" class="link">Impress</a>
-    </div>
-</div>
-<script type='text/javascript'>
+<div class="bg-gradient"></div>
+<div class="bg-noise"></div>
 
+<div class="app">
+    <div class="container">
+
+        <!-- Logo -->
+        <div class="logo-section">
+            <div class="logo">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 14.36c-.2.3-.56.4-.86.2-2.36-1.44-5.33-1.77-8.83-.97-.34.08-.67-.14-.75-.47-.08-.34.13-.67.47-.75 3.83-.87 7.12-.5 9.77 1.13.3.18.4.56.2.86zm1.22-2.72c-.24.38-.76.5-1.14.24-2.7-1.66-6.82-2.14-10.02-1.17-.42.12-.86-.1-.98-.52-.12-.42.1-.86.52-.98 3.65-1.1 8.18-.57 11.3 1.33.38.24.5.76.32 1.1zm.1-2.83c-3.24-1.93-8.58-2.1-11.68-1.16-.5.15-1.02-.13-1.17-.62-.15-.5.13-1.02.62-1.17 3.55-1.08 9.46-.87 13.2 1.34.46.27.6.86.34 1.32-.27.44-.86.6-1.31.29z"/></svg>
+                </div>
+                <div class="logo-text">My<span>Spot</span>Backup</div>
+            </div>
+            <div class="tagline">Backup & restore your Spotify library</div>
+        </div>
+
+        <!-- Login Panel -->
+        <div id="pnlLoggedOut" class="card login-section">
+            <div class="login-title">Connect Your Account</div>
+            <div class="login-desc">Securely connect with Spotify to export your playlists, saved tracks, and library into a backup file — or restore from a previous backup.</div>
+            <div class="feature-pills">
+                <span class="pill"><svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>Export</span>
+                <span class="pill"><svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>Import</span>
+                <span class="pill"><svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>Playlists</span>
+                <span class="pill"><svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>Saved Tracks</span>
+            </div>
+            <button id="login" class="btn btn-primary">
+                <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 14.36c-.2.3-.56.4-.86.2-2.36-1.44-5.33-1.77-8.83-.97-.34.08-.67-.14-.75-.47-.08-.34.13-.67.47-.75 3.83-.87 7.12-.5 9.77 1.13.3.18.4.56.2.86zm1.22-2.72c-.24.38-.76.5-1.14.24-2.7-1.66-6.82-2.14-10.02-1.17-.42.12-.86-.1-.98-.52-.12-.42.1-.86.52-.98 3.65-1.1 8.18-.57 11.3 1.33.38.24.5.76.32 1.1zm.1-2.83c-3.24-1.93-8.58-2.1-11.68-1.16-.5.15-1.02-.13-1.17-.62-.15-.5.13-1.02.62-1.17 3.55-1.08 9.46-.87 13.2 1.34.46.27.6.86.34 1.32-.27.44-.86.6-1.31.29z"/></svg>
+                Login with Spotify
+            </button>
+        </div>
+
+        <!-- Account / Loading Panel -->
+        <div id="pnlLoadingAccount" class="card account-section hidden">
+            <div class="account-header">
+                <div class="avatar" id="avatarLetter">?</div>
+                <div>
+                    <div class="account-label">Logged in as</div>
+                    <div class="account-name" id="userName"></div>
+                </div>
+            </div>
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-value" id="loadingPlaylists">—</div>
+                    <div class="stat-label">Playlists</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="loadingTracks">—</div>
+                    <div class="stat-label">Tracks</div>
+                </div>
+            </div>
+            <div id="loadingTitle" class="status-msg"></div>
+        </div>
+
+        <!-- Action Panel -->
+        <div id="pnlAction" class="card actions hidden">
+            <div class="action-grid">
+                <div id="btnExport" class="action-card action-export">
+                    <div class="icon">
+                        <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                    </div>
+                    <div class="action-title">Export</div>
+                    <div class="action-desc">Save to file</div>
+                </div>
+                <div id="btnImport" class="action-card action-import">
+                    <div class="icon">
+                        <svg viewBox="0 0 24 24"><path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z"/></svg>
+                    </div>
+                    <div class="action-title">Import</div>
+                    <div class="action-desc">Restore backup</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Import Panel -->
+        <div id="pnlImport" class="card import-section hidden">
+            <div id="pnlFile">
+                <div class="file-upload-area">
+                    <input type="file" id="fileImport"/>
+                    <div class="upload-icon">
+                        <svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/></svg>
+                    </div>
+                    <p><strong>Click to select</strong> your backup file</p>
+                </div>
+            </div>
+            <div id="pnlFileInfo" class="hidden">
+                <div class="file-info">
+                    <div class="file-icon">
+                        <svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/></svg>
+                    </div>
+                    <div>
+                        <div class="file-name" id="fileName"></div>
+                        <div class="file-meta"><span id="filePlaylists">0</span> playlists · <span id="fileTracks">0</span> tracks</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Upload / Progress Panel -->
+        <div id="pnlUpload" class="card progress-section hidden">
+            <div class="progress-header">
+                <div class="progress-title">Importing</div>
+                <div class="progress-pct" id="progressPct">0%</div>
+            </div>
+            <div class="progress-bar-wrap">
+                <div id="progressBar" class="progress-bar-fill"></div>
+            </div>
+            <div class="progress-stats">
+                <div class="progress-stat">
+                    <div class="val"><span id="playlistStep">0</span>/<span id="playlistTotal">0</span></div>
+                    <div class="lbl">Playlists</div>
+                </div>
+                <div class="progress-stat">
+                    <div class="val"><span id="trackStep">0</span>/<span id="trackTotal">0</span></div>
+                    <div class="lbl">Tracks</div>
+                </div>
+            </div>
+            <div id="globalStep" class="progress-status"></div>
+        </div>
+
+    </div>
+</div>
+
+<script>
 
     var conf = config;
-
     var authWindow = null;
     var token = null;
     var userId = '';
     var collections = {};
     var name = 'spotify';
-
     var isImporting = false;
     var isExporting = false;
     var globalStep = "";
     var playlistStep = 0;
     var trackStep = 0;
     var trackTotal = 0;
-
+    var playlistTotal = 0;
     var playlistQueue = [];
     var savedQueue = [];
-
     var makingChanges = false;
 
     function refreshTrackData(callback) {
         if (!isExporting && !isImporting) {
             isExporting = true;
             resetCounter();
-            $('#pnlLoadingAccount').show();
-            $('#loadingTitle').html('Please wait. Loading your playlists and tracks ...');
+            $('#pnlLoadingAccount').removeClass('hidden');
+            $('#loadingTitle').html('Loading your playlists and tracks…');
             refreshPlaylist(function () {
                 refreshMyMusicTracks(function () {
-                    // refreshStarredTracks(function () {
-                    $('#loadingTitle').html('Finished loading, you now might want to export or import.');
+                    $('#loadingTitle').html('All loaded! Choose to export or import below.');
                     isExporting = false;
                     callback();
-                    // });
                 });
             });
         }
@@ -245,18 +187,19 @@
         $('#trackTotal').html(trackTotal);
         var progress = 0;
         if (trackTotal > 0) {
-            var progress = Math.floor(((trackStep / trackTotal) * 100));
+            progress = Math.floor(((trackStep / trackTotal) * 100));
         }
-        $('#progressBar').css('width', progress + '%')
+        $('#progressBar').css('width', progress + '%');
+        $('#progressPct').html(progress + '%');
         if (typeof collections !== 'undefined' && !makingChanges) {
             var set = collectionProperties(collections);
-            $('#loadingPlaylists').html("" + set.playlistCount + " playlists");
-            $('#loadingTracks').html("" + set.trackCount + " tracks");
+            $('#loadingPlaylists').html(set.playlistCount);
+            $('#loadingTracks').html(set.trackCount);
         }
         if (typeof importColl !== 'undefined') {
             var set2 = collectionProperties(importColl);
-            $('#filePlaylists').html("" + set2.playlistCount + " playlists");
-            $('#fileTracks').html("" + set2.trackCount + " tracks");
+            $('#filePlaylists').html(set2.playlistCount);
+            $('#fileTracks').html(set2.trackCount);
         }
         setTimeout(refreshProgress, 1000);
     }
@@ -265,24 +208,19 @@
         var width = 480, height = 640;
         var left = (screen.width / 2) - (width / 2);
         var top = (screen.height / 2) - (height / 2);
-
         authWindow = window.open(
-            conf.login_url,
-            "Spotify",
+            conf.login_url, "Spotify",
             'menubar=no,location=no,resizable=no,scrollbars=no,status=no, width=' + width + ', height=' + height + ', top=' + top + ', left=' + left
         );
     }
 
     function authCallback(event) {
         if (event.origin !== conf.uri) {
-            console.log("config.uri missconfigured:");
-            console.log({uri: conf.uri, origin: origin});
+            console.log("config.uri misconfigured:", {uri: conf.uri, origin: event.origin});
             return;
         }
         if (event.data.token) {
-            if (authWindow) {
-                authWindow.close();
-            }
+            if (authWindow) authWindow.close();
             handleAuth(event.data.token);
         }
     }
@@ -291,7 +229,6 @@
         var pom = document.createElement('a');
         pom.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
         pom.setAttribute('download', filename);
-
         if (document.createEvent) {
             var event = document.createEvent('MouseEvents');
             event.initEvent('click', true, true);
@@ -302,22 +239,16 @@
     }
 
     function readFile(evt) {
-        //Retrieve the first (and only!) File from the FileList object
         var f = evt.target.files[0];
-
         if (f) {
             $('#fileName').html(f.name);
-
             var r = new FileReader();
             r.onload = function (e) {
                 var json = e.target.result;
-
                 importColl = JSON.parse(json);
-
-                $('#pnlFile').hide();
-                $('#pnlFileInfo').show();
-                $('#pnlUpload').show();
-
+                $('#pnlFile').addClass('hidden');
+                $('#pnlFileInfo').removeClass('hidden');
+                $('#pnlUpload').removeClass('hidden');
                 compareEverything();
             }
             r.readAsText(f);
@@ -336,21 +267,15 @@
         $.each(keys, function (index, value) {
             count += coll.playlists[value].tracks.length;
         });
-        if (coll.starred) {
-            count += coll.starred.length;
-        }
-        if (coll.saved) {
-            count += coll.saved.length;
-        }
+        if (coll.starred) count += coll.starred.length;
+        if (coll.saved) count += coll.saved.length;
         return count;
     }
 
     function collPlaylistCount(coll) {
         var keys = _.keys(coll.playlists);
         var count = keys.length + 1;
-        if (!("importedStarred" in keys)) {
-            count++;
-        }
+        if (!("importedStarred" in keys)) count++;
         return count;
     }
 
@@ -359,29 +284,19 @@
             isImporting = true;
             makingChanges = true;
             resetCounter();
-
             savedQueue = [];
             playlistQueue = [];
-
             globalStep = "Uploading";
             if (typeof importColl !== 'undefined') {
-
                 playlistTotal = collPlaylistCount(importColl);
-
-                // TONOTDO:compare starred -> can not really do that since there is no api to manipulate those
-                // instead we just create a replacement-standard-list
                 globalStep = "Comparing starred tracks";
-
                 makeSureImportedStarredExists(function (proceed) {
                     if (importColl.starred && importColl.starred.length > 0) {
                         compareUriTracks(importColl.starred, collections.starred, addToStarred);
                     }
-                    // compare saved
                     globalStep = "Comparing saved tracks";
                     compareIdTracks(importColl.saved, collections.saved, addToSaved);
                     playlistStep += 1;
-
-                    // compare other playlists
                     var playlistNames = _.keys(importColl.playlists);
                     globalStep = "Comparing custom playlists";
                     handlePlaylistCompare(playlistNames.reverse(), function () {
@@ -393,12 +308,9 @@
     }
 
     function handleTrackUpload() {
-
         trackDiff = savedQueue.length + playlistQueue.length;
         trackTotal = Math.max(collTrackCount(importColl), trackDiff);
         trackStep = trackTotal - trackDiff;
-
-
         if (trackTotal > 0) {
             $('#progressBar').show();
             globalStep = "Uploading tracks";
@@ -416,10 +328,7 @@
 
     function handlePlaylistCompare(names, callback) {
         var name = names.pop();
-        if (!name) {
-            callback();
-            return;
-        }
+        if (!name) { callback(); return; }
         makeSurePlaylistExists(name, function (proceed) {
             if (proceed) {
                 var playlistId = collections.playlists[name].id;
@@ -437,38 +346,27 @@
 
     function makeSurePlaylistExists(name, callback) {
         playlistStep += 1;
-        if (name in collections.playlists) {
-            callback(true);
-            return;
-        }
+        if (name in collections.playlists) { callback(true); return; }
         var set = {name: name, public: "true"};
         $.ajax({
             method: "POST",
             url: 'https://api.spotify.com/v1/users/' + userId + '/playlists',
             data: JSON.stringify(set),
             contentType: 'application/json',
-            headers: {
-                'Authorization': 'Bearer ' + token
-            },
+            headers: {'Authorization': 'Bearer ' + token},
             success: function (response) {
-                // alert(JSON.stringify(response));
                 collections.playlists[response.name] = {
-                    name: response.name,
-                    href: response.tracks.href,
-                    id: response.id,
-                    tracks: []
+                    name: response.name, href: response.tracks.href,
+                    id: response.id, tracks: []
                 };
                 callback(true);
             },
-            fail: function () {
-                callback(false);
-            }
+            fail: function () { callback(false); }
         });
     }
 
     function makeSureImportedStarredExists(callback) {
-        var name = 'importedStarred';
-        makeSurePlaylistExists(name, callback);
+        makeSurePlaylistExists('importedStarred', callback);
     }
 
     function addToStarred(trackUri) {
@@ -484,31 +382,16 @@
         if (url) {
             trackStep += 1;
             $.ajax({
-                method: "PUT",
-                url: url,
-                headers: {
-                    'Authorization': 'Bearer ' + token
-                },
-                success: function () {
-                },
-                fail: function (jqXHR, textStatus, errorThrown) {
-                    console.log(errorThrown);
-                }
-            })
-                .always(function () {
-                    handleSavedRequests(arr, callback);
-                });
-        } else {
-            callback();
-        }
+                method: "PUT", url: url,
+                headers: {'Authorization': 'Bearer ' + token},
+                success: function () {},
+                fail: function (jqXHR, textStatus, errorThrown) { console.log(errorThrown); }
+            }).always(function () { handleSavedRequests(arr, callback); });
+        } else { callback(); }
     }
 
-
     function handlePlaylistRequestsWithTimeout(arr, callback) {
-        setTimeout(function () {
-            console.log("Fast runners are dead runners");
-            handlePlaylistRequests(arr, callback)
-        }, conf.slowdown_import);
+        setTimeout(function () { handlePlaylistRequests(arr, callback); }, conf.slowdown_import);
     }
 
     function handlePlaylistRequests(arr, callback) {
@@ -516,40 +399,18 @@
         if (url) {
             trackStep += 1;
             $.ajax({
-                method: "POST",
-                url: url,
-                contentType: 'application/json',
-                headers: {
-                    'Authorization': 'Bearer ' + token
-                },
-                success: function (response) {
-                    // collections.playlists[response.name] = {
-                    //     id: response.id,
-                    //     uri: response.uri
-                    // };
-                },
-                fail: function (jqXHR, textStatus, errorThrown) {
-                    console.log(errorThrown);
-                }
-            })
-                .always(function () {
-                    handlePlaylistRequestsWithTimeout(arr, callback);
-                })
-        } else {
-            callback();
-        }
+                method: "POST", url: url, contentType: 'application/json',
+                headers: {'Authorization': 'Bearer ' + token},
+                success: function () {},
+                fail: function (jqXHR, textStatus, errorThrown) { console.log(errorThrown); }
+            }).always(function () { handlePlaylistRequestsWithTimeout(arr, callback); });
+        } else { callback(); }
     }
 
     function uriInTracks(uri, tracks, addCallback) {
         var found = false;
-        $.each(tracks, function (index, value) {
-            if (value.uri == uri) {
-                found = true;
-            }
-        });
-        if (!found) {
-            addCallback(uri);
-        }
+        $.each(tracks, function (index, value) { if (value.uri == uri) found = true; });
+        if (!found) addCallback(uri);
     }
 
     function addToSaved(id) {
@@ -559,35 +420,23 @@
     function compareUriTracks(imported, stored, addCallback) {
         $.each(imported, function (index, value) {
             var found = false;
-            $.each(stored, function (index2, value2) {
-                if (value.uri == value2.uri) {
-                    found = true;
-                }
-            });
-            if (!found) {
-                addCallback(value.uri);
-            }
+            $.each(stored, function (index2, value2) { if (value.uri == value2.uri) found = true; });
+            if (!found) addCallback(value.uri);
         });
     }
 
     function compareIdTracks(imported, stored, addCallback) {
         $.each(imported, function (index, value) {
             var found = false;
-            $.each(stored, function (index2, value2) {
-                if (value.id == value2.id) {
-                    found = true;
-                }
-            });
-            if (!found) {
-                addCallback(value.id);
-            }
+            $.each(stored, function (index2, value2) { if (value.id == value2.id) found = true; });
+            if (!found) addCallback(value.id);
         });
     }
 
     function bindControls() {
         $('#btnImport').click(function () {
-            $('#pnlAction').hide();
-            $('#pnlImport').show();
+            $('#pnlAction').addClass('hidden');
+            $('#pnlImport').removeClass('hidden');
         });
         $('#btnExport').click(function () {
             var json = JSON.stringify(collections);
@@ -600,23 +449,19 @@
 
     function handleAuth(accessToken) {
         token = accessToken;
-        console.log("fetching now with auth token", token)
-        // fetch my public playlists
+        console.log("fetching now with auth token", token);
         $.ajax({
             url: 'https://api.spotify.com/v1/me',
-            headers: {
-                'Authorization': 'Bearer ' + accessToken
-            },
+            headers: {'Authorization': 'Bearer ' + accessToken},
             success: function (response) {
                 var user_id = response.id.toLowerCase();
                 userId = user_id;
                 name = user_id;
-
                 $('#userName').html(name);
-                $('#pnlLoggedOut').hide();
-
+                $('#avatarLetter').html(name.charAt(0).toUpperCase());
+                $('#pnlLoggedOut').addClass('hidden');
                 refreshTrackData(function () {
-                    $('#pnlAction').show();
+                    $('#pnlAction').removeClass('hidden');
                 });
             }
         });
@@ -628,62 +473,27 @@
         loadTrackChunks('https://api.spotify.com/v1/me/tracks', collections.saved, callback);
     }
 
-    // DEPRECATED
-    // function refreshStarredTracks(callback) {
-    //     collections.starred = [];
-    //     playlistStep += 1;
-    //     loadStarred('https://api.spotify.com/v1/users/' + userId + '/starred', collections.starred, callback)
-    // }
-
-    // DEPRECATED
-    // function loadStarred(url, arr, callback) {
-    //     $.ajax({
-    //         url: url,
-    //         headers: {
-    //             'Authorization': 'Bearer ' + token
-    //         },
-    //         success: function(data) {
-    //             if (!data) return;
-    //             if ('tracks' in data) {
-    //                 loadTrackChunks(data.tracks.href, arr, callback);
-    //             } else {
-    //                 callback();
-    //             }
-    //         }
-    //     });
-    // }
-
-    function loadTrackChunksWithTimeout(url, arr, callback, timeout) {
-        setTimeout(function () {
-            console.log("Taking breath, not to fast my cheetah");
-            loadTrackChunks(url, arr, callback)
-        }, conf.slowdown_export);
+    function loadTrackChunksWithTimeout(url, arr, callback) {
+        setTimeout(function () { loadTrackChunks(url, arr, callback); }, conf.slowdown_export);
     }
 
     function loadTrackChunks(url, arr, callback) {
         $.ajax({
             url: url,
-            headers: {
-                'Authorization': 'Bearer ' + token
-            },
+            headers: {'Authorization': 'Bearer ' + token},
             success: function (data) {
                 if (!data) return;
                 if ('items' in data) {
                     $.each(data.items, function (index, value) {
                         if (value.track !== null) {
                             arr.push({id: value.track.id, uri: value.track.uri});
-                        } else {
-                            console.log("track is null", value);
-                        }
+                        } else { console.log("track is null", value); }
                     });
                 } else {
                     arr.push({id: data.track.id, uri: data.track.uri});
                 }
-                if (data.next) {
-                    loadTrackChunksWithTimeout(data.next, arr, callback);
-                } else {
-                    callback();
-                }
+                if (data.next) { loadTrackChunksWithTimeout(data.next, arr, callback); }
+                else { callback(); }
             }
         });
     }
@@ -691,7 +501,7 @@
     function refreshPlaylist(callback) {
         collections.playlists = {};
         var playlists = [];
-        loadPlaylistChunks('https://api.spotify.com/v1/users/' + userId + '/playlists', playlists, function () {
+        loadPlaylistChunks('https://api.spotify.com/v1/me/playlists', playlists, function () {
             handlePlaylistTracks(playlists, collections.playlists, callback);
         });
     }
@@ -699,69 +509,44 @@
     function loadPlaylistChunks(url, arr, callback) {
         $.ajax({
             url: url,
-            headers: {
-                'Authorization': 'Bearer ' + token
-            },
+            headers: {'Authorization': 'Bearer ' + token},
             success: function (data) {
                 if (!data) return;
                 if ('items' in data) {
                     $.each(data.items, function (index, value) {
                         if (value.tracks && value.tracks.href) {
-                            arr.push({
-                                name: value.name,
-                                href: value.tracks.href,
-                                id: value.id,
-                                tracks: []
-                            });
+                            arr.push({name: value.name, href: value.tracks.href, id: value.id, tracks: []});
                         }
                     });
                 } else {
                     if (data.tracks && data.tracks.href) {
-                        arr.push({
-                            name: data.name,
-                            href: data.tracks.href,
-                            id: value.id,
-                            tracks: []
-                        });
+                        arr.push({name: data.name, href: data.tracks.href, id: data.id, tracks: []});
                     }
                 }
-                if (data.next) {
-                    loadPlaylistChunks(data.next, arr, callback);
-                } else {
-                    callback();
-                }
+                if (data.next) { loadPlaylistChunks(data.next, arr, callback); }
+                else { callback(); }
             }
         });
     }
 
     function handlePlaylistTracks(arr, result, callback) {
         var item = arr.pop();
-        if (!item) {
-            return callback();
-        }
+        if (!item) return callback();
         playlistStep += 1;
         item.tracks = [];
         loadTrackChunks(item.href, item.tracks, function () {
             delete item.href;
             result[item.name] = item;
-            if (arr.length == 0) {
-                callback();
-            } else {
-                handlePlaylistTracks(arr, result, callback);
-            }
+            if (arr.length == 0) callback();
+            else handlePlaylistTracks(arr, result, callback);
         });
     }
 
     window.onload = function () {
-        if (navigator.userAgent.indexOf('MSIE') !== -1 || navigator.appVersion.indexOf('Trident/') > 0) {
-            // MSIE
-            $('#pnlLoggedOut').html('Please use Firefox or Chrome, due to a bug in Internet Explorer');
-        } else {
-            $('#login').click(login);
-            window.addEventListener("message", authCallback, false);
-            bindControls();
-            refreshProgress();
-        }
+        $('#login').click(login);
+        window.addEventListener("message", authCallback, false);
+        bindControls();
+        refreshProgress();
     }
 
 </script>

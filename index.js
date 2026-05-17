@@ -1,4 +1,5 @@
 const crypto = require('crypto')
+const path = require('path')
 const express = require('express')
 const {stringify} = require("querystring");
 const config = require("./public/config")
@@ -17,21 +18,17 @@ function generateRandomString(length) {
 }
 
 async function generateCodeChallenge(codeVerifier) {
-    const data = new TextEncoder().encode(codeVerifier);
-    const digest = await crypto.subtle.digest('SHA-256', data);
-    return btoa(String.fromCharCode.apply(null, [...new Uint8Array(digest)]))
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_')
-        .replace(/=+$/, '');
+    const digest = crypto.createHash('sha256').update(codeVerifier).digest();
+    return Buffer.from(digest).toString('base64url');
 }
 
-app.use(express.static('public'))
+app.use(express.static(path.join(__dirname, 'public')))
 
 app.get('/login', async function (req, res) {
     res.redirect('https://accounts.spotify.com/authorize?' + stringify({
         response_type: 'code',
         client_id: config.client_id,
-        scope: 'user-read-private user-read-email playlist-read playlist-read-private playlist-modify-public playlist-modify-private user-library-read user-library-modify',
+        scope: 'user-read-private user-read-email playlist-read-private playlist-modify-public playlist-modify-private user-library-read user-library-modify',
         redirect_uri: config.callback_uri,
         state: generateRandomString(16),
         code_challenge_method: "S256",
@@ -50,7 +47,7 @@ app.get('/callback', async function (req, res) {
     } else {
         const {token, error} = await getAccessToken(code);
         if (error) {
-            res.send(`Error during getAccessToken: ${error}, probably a invalid session. Restart your server and go to the <a href="/">Home Page</a>`)
+            return res.send(`Error during getAccessToken: ${error}, probably a invalid session. Restart your server and go to the <a href="/">Home Page</a>`);
         }
         res.send(`Congrats! Your Code is <br/>  ${code} <br/> and the token is <br/> ${token}<br/> , submitting to parent page now.` + `<script type='text/javascript'>window.onload = () => { console.log("posting", "${{token}}", "${config.uri}"); window.opener.postMessage({token:"${token}"}, "${config.uri}");}</script>`);
     }
@@ -77,6 +74,7 @@ async function getAccessToken(code) {
 }
 
 
-app.listen(config.port, () => {
-    console.log(`MySpotBackup is running`, config);
+const port = process.env.PORT || config.port;
+app.listen(port, '0.0.0.0', () => {
+    console.log(`MySpotBackup is running on port ${port}`, config);
 })

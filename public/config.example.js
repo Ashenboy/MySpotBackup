@@ -8,6 +8,6 @@ config = {
     "slowdown_export": 100
 }
 
-if(module){
+if(typeof module !== 'undefined' && module.exports){
     module.exports = config;
 }
