@@ -184,7 +184,7 @@ body {
 /* Action Buttons */
 .actions { margin-top: 16px; animation-delay: 0.2s; }
 
-.action-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.action-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
 
 .action-card {
   padding: 24px 16px; border-radius: var(--radius-sm); text-align: center;
@@ -206,6 +206,13 @@ body {
 
 .action-export .icon { background: linear-gradient(135deg, var(--accent), #15a847); }
 .action-import .icon { background: linear-gradient(135deg, #633cff, #8b5cf6); }
+.action-wipe .icon { background: linear-gradient(135deg, #e74c5e, #ff6b81); }
+
+.action-wipe { border-color: rgba(231,76,94,0.2); }
+.action-wipe:hover {
+  background: rgba(231,76,94,0.08); border-color: rgba(231,76,94,0.35);
+  box-shadow: 0 4px 20px rgba(231,76,94,0.15);
+}
 
 .action-card .action-title { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
 .action-card .action-desc { font-size: 12px; color: var(--text-muted); }

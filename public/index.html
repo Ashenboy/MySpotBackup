@@ -84,6 +84,13 @@
                     <div class="action-title">Import</div>
                     <div class="action-desc">Restore backup</div>
                 </div>
+                <div id="btnWipe" class="action-card action-wipe">
+                    <div class="icon">
+                        <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                    </div>
+                    <div class="action-title">Wipe Account</div>
+                    <div class="action-desc">Remove everything</div>
+                </div>
             </div>
         </div>
 
@@ -155,20 +162,45 @@
     var savedQueue = [];
     var followQueue = [];
     var artistFollowQueue = [];
+    var librarySaveQueues = { albums: [], shows: [], episodes: [], audiobooks: [] };
     var makingChanges = false;
+
+    // Get delay for next request — respects 429 Retry-After header
+    function getRetryDelay(jqXHR, defaultDelay) {
+        if (jqXHR && jqXHR.status === 429) {
+            var retryAfter = jqXHR.getResponseHeader('Retry-After');
+            if (retryAfter) {
+                var secs = parseInt(retryAfter, 10);
+                // Cap at 60 seconds to avoid absurdly long waits
+                var waitMs = Math.min(secs, 60) * 1000;
+                console.warn('Rate limited! Waiting ' + Math.min(secs, 60) + 's (Retry-After: ' + retryAfter + 's)');
+                globalStep = '⏳ Rate limited — waiting ' + Math.min(secs, 60) + 's...';
+                return waitMs;
+            }
+        }
+        return defaultDelay || conf.slowdown_import;
+    }
 
     function refreshTrackData(callback) {
         if (!isExporting && !isImporting) {
             isExporting = true;
             resetCounter();
             $('#pnlLoadingAccount').removeClass('hidden');
-            $('#loadingTitle').html('Loading your playlists and tracks…');
+            $('#loadingTitle').html('Loading your library data…');
             refreshPlaylist(function () {
                 refreshMyMusicTracks(function () {
-                    refreshFollowedArtists(function () {
-                        $('#loadingTitle').html('All loaded! Choose to export or import below.');
-                        isExporting = false;
-                        callback();
+                    refreshSavedAlbums(function () {
+                        refreshSavedShows(function () {
+                            refreshSavedEpisodes(function () {
+                                refreshSavedAudiobooks(function () {
+                                    refreshFollowedArtists(function () {
+                                        $('#loadingTitle').html('All loaded! Choose to export or import below.');
+                                        isExporting = false;
+                                        callback();
+                                    });
+                                });
+                            });
+                        });
                     });
                 });
             });
@@ -302,6 +334,26 @@
                     globalStep = "Comparing saved tracks";
                     compareIdTracks(importColl.saved, collections.saved, addToSaved);
                     playlistStep += 1;
+                    // Queue saved albums
+                    if (importColl.savedAlbums && importColl.savedAlbums.length > 0) {
+                        $.each(importColl.savedAlbums, function (i, a) { librarySaveQueues.albums.push(a.id); });
+                        console.log('Albums to restore:', librarySaveQueues.albums.length);
+                    }
+                    // Queue saved shows
+                    if (importColl.savedShows && importColl.savedShows.length > 0) {
+                        $.each(importColl.savedShows, function (i, s) { librarySaveQueues.shows.push(s.id); });
+                        console.log('Shows to restore:', librarySaveQueues.shows.length);
+                    }
+                    // Queue saved episodes
+                    if (importColl.savedEpisodes && importColl.savedEpisodes.length > 0) {
+                        $.each(importColl.savedEpisodes, function (i, e) { librarySaveQueues.episodes.push(e.id); });
+                        console.log('Episodes to restore:', librarySaveQueues.episodes.length);
+                    }
+                    // Queue saved audiobooks
+                    if (importColl.savedAudiobooks && importColl.savedAudiobooks.length > 0) {
+                        $.each(importColl.savedAudiobooks, function (i, ab) { librarySaveQueues.audiobooks.push(ab.id); });
+                        console.log('Audiobooks to restore:', librarySaveQueues.audiobooks.length);
+                    }
                     // Queue followed playlists for following on new account
                     if (importColl.followedPlaylists && importColl.followedPlaylists.length > 0) {
                         globalStep = "Queueing followed playlists";
@@ -332,31 +384,53 @@
         trackDiff = savedQueue.length + playlistQueue.length;
         trackTotal = Math.max(collTrackCount(importColl), trackDiff);
         trackStep = trackTotal - trackDiff;
-        if (trackTotal > 0 || followQueue.length > 0) {
+        // Include all operations in playlistTotal so counter doesn't overflow
+        var extraOps = followQueue.length + artistFollowQueue.length
+            + librarySaveQueues.albums.length + librarySaveQueues.shows.length
+            + librarySaveQueues.episodes.length + librarySaveQueues.audiobooks.length;
+        playlistTotal += extraOps;
+        var hasWork = trackTotal > 0 || followQueue.length > 0 || artistFollowQueue.length > 0
+            || librarySaveQueues.albums.length > 0 || librarySaveQueues.shows.length > 0
+            || librarySaveQueues.episodes.length > 0 || librarySaveQueues.audiobooks.length > 0;
+        if (hasWork) {
             $('#progressBar').show();
             globalStep = "Uploading tracks";
             handleSavedRequests(savedQueue.reverse(), function () {
                 handlePlaylistRequests(playlistQueue.reverse(), function () {
-                    var afterPlaylists = function () {
-                        if (artistFollowQueue.length > 0) {
-                            globalStep = "Following artists";
-                            handleArtistFollowRequests(artistFollowQueue, function () {
-                                globalStep = "Finished uploading";
-                                trackTotal = trackStep;
-                                isImporting = false;
+                    globalStep = "Saving albums";
+                    handleLibrarySaveRequests(librarySaveQueues.albums, 'album', function () {
+                        globalStep = "Saving shows";
+                        handleLibrarySaveRequests(librarySaveQueues.shows, 'show', function () {
+                            globalStep = "Saving episodes";
+                            handleLibrarySaveRequests(librarySaveQueues.episodes, 'episode', function () {
+                                globalStep = "Saving audiobooks";
+                                handleLibrarySaveRequests(librarySaveQueues.audiobooks, 'audiobook', function () {
+                                    var afterLibrary = function () {
+                                        if (artistFollowQueue.length > 0) {
+                                            globalStep = "Following artists";
+                                            handleArtistFollowRequests(artistFollowQueue, function () {
+                                                globalStep = "Finished uploading";
+                                                trackTotal = trackStep;
+                                                playlistTotal = playlistStep;
+                                                isImporting = false;
+                                            });
+                                        } else {
+                                            globalStep = "Finished uploading";
+                                            trackTotal = trackStep;
+                                            playlistTotal = playlistStep;
+                                            isImporting = false;
+                                        }
+                                    };
+                                    if (followQueue.length > 0) {
+                                        globalStep = "Following playlists";
+                                        handleFollowRequests(followQueue.reverse(), afterLibrary);
+                                    } else {
+                                        afterLibrary();
+                                    }
+                                });
                             });
-                        } else {
-                            globalStep = "Finished uploading";
-                            trackTotal = trackStep;
-                            isImporting = false;
-                        }
-                    };
-                    if (followQueue.length > 0) {
-                        globalStep = "Following playlists";
-                        handleFollowRequests(followQueue.reverse(), afterPlaylists);
-                    } else {
-                        afterPlaylists();
-                    }
+                        });
+                    });
                 });
             });
         } else {
@@ -368,6 +442,7 @@
         var playlistId = arr.pop();
         if (playlistId) {
             playlistStep += 1;
+            var lastXHR = null;
             console.log('Following playlist:', playlistId);
             $.ajax({
                 method: "PUT",
@@ -376,28 +451,32 @@
                 data: JSON.stringify({public: false}),
                 headers: {'Authorization': 'Bearer ' + token},
                 success: function () { console.log('Followed playlist:', playlistId); },
-                error: function (jqXHR) { console.warn('Failed to follow playlist ' + playlistId + ':', jqXHR.status); }
+                error: function (jqXHR) { lastXHR = jqXHR; console.warn('Failed to follow playlist ' + playlistId + ':', jqXHR.status); }
             }).always(function () {
-                setTimeout(function () { handleFollowRequests(arr, callback); }, conf.slowdown_import);
+                var delay = getRetryDelay(lastXHR);
+                setTimeout(function () { handleFollowRequests(arr, callback); }, delay);
             });
         } else { callback(); }
     }
 
     function handleArtistFollowRequests(arr, callback) {
-        // Spotify allows up to 50 artist IDs per request
+        // /me/following is deprecated — use /me/library with spotify:user:{id} URIs
         if (arr.length === 0) { callback(); return; }
-        var batch = arr.splice(0, 50);
-        var ids = batch.join(',');
-        console.log('Following ' + batch.length + ' artists...');
+        var batch = arr.splice(0, 40);
+        var uris = batch.map(function (id) { return 'spotify:user:' + id; });
+        var urisParam = uris.map(function (u) { return encodeURIComponent(u); }).join(',');
+        var lastXHR = null;
+        console.log('Following ' + batch.length + ' artists via library...');
         $.ajax({
             method: "PUT",
-            url: 'https://api.spotify.com/v1/me/following?type=artist&ids=' + ids,
+            url: 'https://api.spotify.com/v1/me/library?uris=' + urisParam,
             headers: {'Authorization': 'Bearer ' + token},
             success: function () { console.log('Followed ' + batch.length + ' artists'); },
-            error: function (jqXHR) { console.warn('Failed to follow artists:', jqXHR.status, jqXHR.responseText); }
+            error: function (jqXHR) { lastXHR = jqXHR; console.warn('Failed to follow artists:', jqXHR.status, jqXHR.responseText); }
         }).always(function () {
             playlistStep += batch.length;
-            setTimeout(function () { handleArtistFollowRequests(arr, callback); }, conf.slowdown_import);
+            var delay = getRetryDelay(lastXHR);
+            setTimeout(function () { handleArtistFollowRequests(arr, callback); }, delay);
         });
     }
 
@@ -416,6 +495,11 @@
     }
 
     function addToPlaylist(playlistId, trackUri) {
+        // Skip local tracks — they can't be added via API
+        if (trackUri && trackUri.indexOf('spotify:local:') === 0) {
+            console.log('Skipping local track (cannot add via API):', trackUri);
+            return;
+        }
         playlistQueue.push('https://api.spotify.com/v1/playlists/' + playlistId + '/items?uris=' + encodeURIComponent(trackUri));
     }
 
@@ -454,16 +538,22 @@
     }
 
     function handleSavedRequests(arr, callback) {
-        var url = arr.pop();
-        if (url) {
-            trackStep += 1;
-            $.ajax({
-                method: "PUT", url: url,
-                headers: {'Authorization': 'Bearer ' + token},
-                success: function () {},
-                fail: function (jqXHR, textStatus, errorThrown) { console.log(errorThrown); }
-            }).always(function () { handleSavedRequests(arr, callback); });
-        } else { callback(); }
+        if (arr.length === 0) { callback(); return; }
+        var batch = arr.splice(0, 40);
+        trackStep += batch.length;
+        var urisParam = batch.map(function (uri) { return encodeURIComponent(uri); }).join(',');
+        var lastXHR = null;
+        console.log('Saving ' + batch.length + ' tracks to library');
+        $.ajax({
+            method: "PUT",
+            url: 'https://api.spotify.com/v1/me/library?uris=' + urisParam,
+            headers: {'Authorization': 'Bearer ' + token},
+            success: function () { console.log('Saved track batch to library'); },
+            error: function (jqXHR) { lastXHR = jqXHR; console.warn('Save tracks failed:', jqXHR.status, jqXHR.responseText); }
+        }).always(function () {
+            var delay = getRetryDelay(lastXHR);
+            setTimeout(function () { handleSavedRequests(arr, callback); }, delay);
+        });
     }
 
     function handlePlaylistRequestsWithTimeout(arr, callback) {
@@ -474,12 +564,16 @@
         var url = arr.pop();
         if (url) {
             trackStep += 1;
+            var lastXHR = null;
             $.ajax({
                 method: "POST", url: url, contentType: 'application/json',
                 headers: {'Authorization': 'Bearer ' + token},
                 success: function () {},
-                fail: function (jqXHR, textStatus, errorThrown) { console.log(errorThrown); }
-            }).always(function () { handlePlaylistRequestsWithTimeout(arr, callback); });
+                error: function (jqXHR) { lastXHR = jqXHR; console.warn('Playlist add failed:', jqXHR.status); }
+            }).always(function () {
+                var delay = getRetryDelay(lastXHR);
+                setTimeout(function () { handlePlaylistRequests(arr, callback); }, delay);
+            });
         } else { callback(); }
     }
 
@@ -490,11 +584,21 @@
     }
 
     function addToSaved(id) {
-        savedQueue.push('https://api.spotify.com/v1/me/tracks?ids=' + id);
+        // Skip null/undefined IDs and local tracks
+        if (!id || id.indexOf('local') === 0) {
+            console.log('Skipping invalid/local track from saved:', id);
+            return;
+        }
+        savedQueue.push('spotify:track:' + id);
     }
 
     function compareUriTracks(imported, stored, addCallback) {
         $.each(imported, function (index, value) {
+            // Skip local tracks entirely
+            if (value.uri && value.uri.indexOf('spotify:local:') === 0) {
+                console.log('Skipping local track during compare:', value.uri);
+                return;
+            }
             var found = false;
             $.each(stored, function (index2, value2) { if (value.uri == value2.uri) found = true; });
             if (!found) addCallback(value.uri);
@@ -520,7 +624,166 @@
             var time = '@' + d.getFullYear() + '_' + (d.getMonth() + 1) + '_' + d.getDate();
             download(name + time + '.json', json);
         });
+        $('#btnWipe').click(function () {
+            if (!confirm('⚠️ WARNING: This will permanently delete ALL data from this Spotify account:\n\n• All saved tracks\n• All saved albums\n• All saved shows & episodes\n• All saved audiobooks\n• All owned playlists (DELETED)\n• All followed playlists (unfollowed)\n• All followed artists (unfollowed)\n\nThis CANNOT be undone. Are you sure?')) return;
+            if (!confirm('FINAL CONFIRMATION: Type-check — are you absolutely sure you want to wipe this account clean?')) return;
+            wipeAccount();
+        });
         $('#fileImport').change(readFile);
+    }
+
+    function wipeAccount() {
+        if (isImporting || isExporting) { alert('Please wait for current operation to finish.'); return; }
+        isImporting = true;
+        makingChanges = true;
+        resetCounter();
+
+        // Calculate total items for progress tracking
+        var totalItems = 0;
+        totalItems += Math.ceil((collections.saved ? collections.saved.length : 0) / 40);
+        totalItems += Math.ceil((collections.savedAlbums ? collections.savedAlbums.length : 0) / 40);
+        totalItems += Math.ceil((collections.savedShows ? collections.savedShows.length : 0) / 40);
+        totalItems += Math.ceil((collections.savedEpisodes ? collections.savedEpisodes.length : 0) / 40);
+        totalItems += Math.ceil((collections.savedAudiobooks ? collections.savedAudiobooks.length : 0) / 40);
+        totalItems += Math.ceil((collections.followedArtists ? collections.followedArtists.length : 0) / 40);
+        totalItems += 10; // estimate for playlists (loaded dynamically)
+        trackTotal = totalItems;
+        playlistTotal = totalItems;
+
+        globalStep = "Wiping account...";
+        $('#pnlAction').addClass('hidden');
+        $('#pnlUpload').removeClass('hidden');
+        $('#progressBar').show();
+
+        // Step 1: Remove saved tracks
+        globalStep = "Removing saved tracks...";
+        wipeLibraryItems('track', collections.saved, function () {
+            // Step 2: Remove saved albums
+            globalStep = "Removing saved albums...";
+            wipeLibraryItems('album', collections.savedAlbums, function () {
+                // Step 3: Remove saved shows
+                globalStep = "Removing saved shows...";
+                wipeLibraryItems('show', collections.savedShows, function () {
+                    // Step 4: Remove saved episodes
+                    globalStep = "Removing saved episodes...";
+                    wipeLibraryItems('episode', collections.savedEpisodes, function () {
+                        // Step 5: Remove saved audiobooks
+                        globalStep = "Removing saved audiobooks...";
+                        wipeLibraryItems('audiobook', collections.savedAudiobooks, function () {
+                            // Step 6: Unfollow all artists
+                            globalStep = "Unfollowing artists...";
+                            wipeArtists(collections.followedArtists ? collections.followedArtists.slice() : [], function () {
+                                // Step 7: Unfollow followed playlists + delete owned playlists
+                                globalStep = "Removing playlists...";
+                                wipePlaylists(function () {
+                                    globalStep = "✅ Account wiped clean!";
+                                    trackTotal = trackStep;
+                                    playlistTotal = playlistStep;
+                                    isImporting = false;
+                                    makingChanges = false;
+                                    collections = {};
+                                    setTimeout(function () {
+                                        alert('Account wiped successfully! You can now import a backup.');
+                                        location.reload();
+                                    }, 1000);
+                                });
+                            });
+                        });
+                    });
+                });
+            });
+        });
+    }
+
+    function wipeLibraryItems(type, items, callback) {
+        if (!items || items.length === 0) { callback(); return; }
+        var batch = items.splice(0, 40);
+        var uris = batch.map(function (i) {
+            return i.uri || ('spotify:' + type + ':' + i.id);
+        });
+        var urisParam = uris.map(function (u) { return encodeURIComponent(u); }).join(',');
+        trackStep += 1;
+        var lastXHR = null;
+        console.log('Removing ' + batch.length + ' ' + type + 's from library');
+        $.ajax({
+            method: "DELETE",
+            url: 'https://api.spotify.com/v1/me/library?uris=' + urisParam,
+            headers: {'Authorization': 'Bearer ' + token},
+            success: function () { console.log('Removed ' + type + ' batch from library'); },
+            error: function (jqXHR) { lastXHR = jqXHR; console.warn('Delete failed for ' + type + ':', jqXHR.status, jqXHR.responseText); }
+        }).always(function () {
+            var delay = getRetryDelay(lastXHR);
+            setTimeout(function () { wipeLibraryItems(type, items, callback); }, delay);
+        });
+    }
+
+    function wipeArtists(artists, callback) {
+        if (!artists || artists.length === 0) { callback(); return; }
+        var batch = artists.splice(0, 40);
+        // Use /me/library DELETE with spotify:user:{id} URIs (deprecated /me/following)
+        var uris = batch.map(function (a) { return 'spotify:user:' + a.id; });
+        var urisParam = uris.map(function (u) { return encodeURIComponent(u); }).join(',');
+        trackStep += 1;
+        var lastXHR = null;
+        console.log('Unfollowing ' + batch.length + ' artists via library');
+        $.ajax({
+            method: "DELETE",
+            url: 'https://api.spotify.com/v1/me/library?uris=' + urisParam,
+            headers: {'Authorization': 'Bearer ' + token},
+            success: function () { console.log('Unfollowed artists batch'); },
+            error: function (jqXHR) { lastXHR = jqXHR; console.warn('Unfollow artists failed:', jqXHR.status); }
+        }).always(function () {
+            var delay = getRetryDelay(lastXHR);
+            setTimeout(function () { wipeArtists(artists, callback); }, delay);
+        });
+    }
+
+    function wipePlaylists(callback) {
+        // Get all playlists and unfollow/delete them
+        var allPlaylists = [];
+        loadAllPlaylistsForWipe('https://api.spotify.com/v1/me/playlists?limit=50', allPlaylists, function () {
+            wipePlaylistBatch(allPlaylists, callback);
+        });
+    }
+
+    function loadAllPlaylistsForWipe(url, arr, callback) {
+        $.ajax({
+            url: url,
+            headers: {'Authorization': 'Bearer ' + token},
+            success: function (data) {
+                if (!data || !data.items) { callback(); return; }
+                $.each(data.items, function (index, pl) {
+                    arr.push({ id: pl.id, name: pl.name, owned: pl.owner && pl.owner.id === userId });
+                });
+                if (data.next) {
+                    loadAllPlaylistsForWipe(data.next, arr, callback);
+                } else {
+                    callback();
+                }
+            },
+            error: function () { callback(); }
+        });
+    }
+
+    function wipePlaylistBatch(playlists, callback) {
+        var pl = playlists.pop();
+        if (!pl) { callback(); return; }
+        trackStep += 1;
+        // For owned playlists: unfollow (which deletes). For followed: unfollow.
+        var action = pl.owned ? 'Deleting' : 'Unfollowing';
+        console.log(action + ' playlist:', pl.name);
+        globalStep = action + ': ' + pl.name;
+        var lastXHR = null;
+        $.ajax({
+            method: "DELETE",
+            url: 'https://api.spotify.com/v1/playlists/' + pl.id + '/followers',
+            headers: {'Authorization': 'Bearer ' + token},
+            success: function () { console.log(action + ' playlist done:', pl.name); },
+            error: function (jqXHR) { lastXHR = jqXHR; console.warn(action + ' playlist failed:', pl.name, jqXHR.status); }
+        }).always(function () {
+            var delay = getRetryDelay(lastXHR);
+            setTimeout(function () { wipePlaylistBatch(playlists, callback); }, delay);
+        });
     }
 
     function handleAuth(accessToken) {
@@ -547,6 +810,76 @@
         collections.saved = [];
         playlistStep += 1;
         loadTrackChunks('https://api.spotify.com/v1/me/tracks', collections.saved, callback);
+    }
+
+    function refreshSavedAlbums(callback) {
+        collections.savedAlbums = [];
+        loadLibraryChunks('https://api.spotify.com/v1/me/albums?limit=50', collections.savedAlbums, 'album', callback);
+    }
+
+    function refreshSavedShows(callback) {
+        collections.savedShows = [];
+        loadLibraryChunks('https://api.spotify.com/v1/me/shows?limit=50', collections.savedShows, 'show', callback);
+    }
+
+    function refreshSavedEpisodes(callback) {
+        collections.savedEpisodes = [];
+        loadLibraryChunks('https://api.spotify.com/v1/me/episodes?limit=50', collections.savedEpisodes, 'episode', callback);
+    }
+
+    function refreshSavedAudiobooks(callback) {
+        collections.savedAudiobooks = [];
+        loadLibraryChunks('https://api.spotify.com/v1/me/audiobooks?limit=50', collections.savedAudiobooks, 'audiobook', callback);
+    }
+
+    function loadLibraryChunks(url, arr, itemKey, callback) {
+        $.ajax({
+            url: url,
+            headers: {'Authorization': 'Bearer ' + token},
+            success: function (data) {
+                if (!data || !data.items) { callback(); return; }
+                $.each(data.items, function (index, value) {
+                    var item = value[itemKey] || value;
+                    if (item && item.id) {
+                        arr.push({
+                            id: item.id,
+                            name: item.name,
+                            uri: item.uri || ('spotify:' + itemKey + ':' + item.id)
+                        });
+                    }
+                });
+                console.log('Loaded ' + itemKey + 's so far:', arr.length);
+                if (data.next) {
+                    setTimeout(function () { loadLibraryChunks(data.next, arr, itemKey, callback); }, conf.slowdown_export);
+                } else {
+                    callback();
+                }
+            },
+            error: function (jqXHR) {
+                console.warn('Failed to fetch saved ' + itemKey + 's:', jqXHR.status);
+                callback();
+            }
+        });
+    }
+
+    function handleLibrarySaveRequests(arr, entityType, callback) {
+        if (arr.length === 0) { callback(); return; }
+        var batch = arr.splice(0, 40);
+        var uris = batch.map(function (id) { return 'spotify:' + entityType + ':' + id; });
+        var urisParam = uris.map(function (u) { return encodeURIComponent(u); }).join(',');
+        var lastXHR = null;
+        console.log('Saving ' + batch.length + ' ' + entityType + 's to library');
+        $.ajax({
+            method: "PUT",
+            url: 'https://api.spotify.com/v1/me/library?uris=' + urisParam,
+            headers: {'Authorization': 'Bearer ' + token},
+            success: function () { console.log('Saved ' + entityType + ' batch to library'); },
+            error: function (jqXHR) { lastXHR = jqXHR; console.warn('Failed to save ' + entityType + 's:', jqXHR.status, jqXHR.responseText); }
+        }).always(function () {
+            playlistStep += batch.length;
+            var delay = getRetryDelay(lastXHR);
+            setTimeout(function () { handleLibrarySaveRequests(arr, entityType, callback); }, delay);
+        });
     }
 
     function refreshFollowedArtists(callback) {
